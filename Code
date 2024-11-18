@@ -1,0 +1,131 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+
+
+def create_maze(size=100):
+    maze = np.zeros((size, size), dtype=int)
+    # Agregar obstáculos aleatorios
+    num_obstacles = int(size * size * 0.3) 
+    for _ in range(num_obstacles):
+        x, y = np.random.randint(0, size, size=2)
+        maze[x, y] = 1
+        
+    # Definir meta
+    goal_x, goal_y = np.random.randint(0, size, size=2)
+    maze[goal_x, goal_y] = 2
+    return maze, (goal_x, goal_y)
+
+# Generar el laberinto
+maze_size = 100
+maze, goal_position = create_maze(maze_size)
+
+# Parámetros del modelo
+alpha = 0.7  # Tasa de aprendizaje
+gamma = 0.9  # Factor de descuento
+epsilon = 1.0  # Parámetro de exploración
+epsilon_decay = 0.995
+min_epsilon = 0.1
+episodes = 1000
+
+# Acciones posibles: arriba, abajo, izquierda, derecha
+actions = ["up", "down", "left", "right"]
+action_map = {
+    "up": (-1, 0),
+    "down": (1, 0),
+    "left": (0, -1),
+    "right": (0, 1)
+}
+
+# Función para validar movimientos
+def is_valid_move(maze, position):
+    x, y = position
+    if 0 <= x < maze.shape[0] and 0 <= y < maze.shape[1]:
+        return maze[x, y] != 1
+    return False
+
+# Inicializar la tabla Q
+q_table = np.zeros((maze_size, maze_size, len(actions)))
+
+# Entrenamiento del agente
+for episode in range(episodes):
+    # Selección de un estado inicial
+    current_position = (np.random.randint(maze_size), np.random.randint(maze_size))
+    while maze[current_position] == 1 or maze[current_position] == 2:
+        current_position = (np.random.randint(maze_size), np.random.randint(maze_size))
+    
+    # Episodio
+    done = False
+    while not done:
+        # Selección de acción (Exploración o Explotación)
+        if random.uniform(0, 1) < epsilon:
+            action_index = random.choice(range(len(actions)))
+        else:
+            action_index = np.argmax(q_table[current_position[0], current_position[1], :])
+        
+        action = actions[action_index]
+        new_position = (
+            current_position[0] + action_map[action][0],
+            current_position[1] + action_map[action][1]
+        )
+        
+        # Validar movimiento
+        if not is_valid_move(maze, new_position):
+            new_position = current_position
+        
+        # Calcular recompensa
+        if new_position == goal_position:
+            reward = 100  # Gran recompensa por llegar a la meta
+            done = True
+        elif new_position == current_position:
+            reward = -10  # Penalización por quedarse en el mismo lugar
+        else:
+            reward = -1  # Penalización leve por movimiento regular
+        
+        # Actualizar tabla Q
+        old_value = q_table[current_position[0], current_position[1], action_index]
+        next_max = np.max(q_table[new_position[0], new_position[1], :])
+        new_value = old_value + alpha * (reward + gamma * next_max - old_value)
+        q_table[current_position[0], current_position[1], action_index] = new_value
+        
+        # Actualizar posición
+        current_position = new_position
+    
+    # Reducir epsilon (menor exploración con el tiempo)
+    if epsilon > min_epsilon:
+        epsilon *= epsilon_decay
+
+# Evaluación del modelo
+def find_path(maze, start, goal):
+    current_position = start
+    path = [current_position]
+    while current_position != goal:
+        action_index = np.argmax(q_table[current_position[0], current_position[1], :])
+        action = actions[action_index]
+        current_position = (
+            current_position[0] + action_map[action][0],
+            current_position[1] + action_map[action][1]
+        )
+        path.append(current_position)
+        if len(path) > 1000:  # Limitar en caso de bucle infinito
+            break
+    return path
+
+# Generar camino
+start_position = (0, 0)
+while maze[start_position] == 1:
+    start_position = (np.random.randint(maze_size), np.random.randint(maze_size))
+
+path = find_path(maze, start_position, goal_position)
+
+# Mostrar laberinto y camino
+def plot_maze(maze, path):
+    plt.figure(figsize=(10, 10))
+    plt.imshow(maze, cmap="binary")
+    x, y = zip(*path)
+    plt.plot(y, x, color="red", linewidth=2)
+    plt.scatter([goal_position[1]], [goal_position[0]], color="green", label="Goal")
+    plt.legend()
+    plt.show()
+
+plot_maze(maze, path)
